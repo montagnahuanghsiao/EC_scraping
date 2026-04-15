@@ -1,0 +1,14 @@
+
+scraping_*
+*.csv
+*.json
+*.webp
+
+
+*.ipynb
+.ipynb_checkpoints/
+
+
+__pycache__/
+venv/
+.idea/
