@@ -10,6 +10,7 @@
 * 自動開啟 Chrome 並進入頁面
 * 搜尋商品關鍵字
 * 排除廣告商品
+* 支援多頁爬取
 * 抓取：
 
   * 商品名稱
@@ -109,6 +110,7 @@ python momo_scraping.py
 
 ```
 請輸入關鍵字: 手機
+請輸入要爬幾頁: 預設限制範圍 1-5 頁
 ```
 
 ---
@@ -142,6 +144,7 @@ scraping_picture_關鍵字_時間/
 | sales_price  | 價格   |
 | store        | 商店   |
 | product_url  | 商品連結 |
+| picture_url  | 圖片連結 |
 
 ---
 
@@ -185,7 +188,6 @@ ls
 ## 🔧 改善方向
 
 * 使用 logging 取代 print
-* 支援多頁爬取
 * 改寫成 class 架構
 * 加入 headless 模式
 * 圖片格式自動判斷
