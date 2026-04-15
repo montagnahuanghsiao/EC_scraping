@@ -271,10 +271,18 @@ def go_to_next_page(driver):
     wait = WebDriverWait(driver, 10)
 
     try:
-        first_item = driver.find_elements(By.CLASS_NAME, "listAreaLi")[0]
+        # 先記錄目前第一個商品的網址
+        first_link_el = wait.until(
+            EC.presence_of_element_located(
+                (By.CSS_SELECTOR, "li.listAreaLi div.goods-img-url > a")
+            )
+        )
+        old_first_href = first_link_el.get_attribute("href")
 
         next_btn = wait.until(
-            EC.element_to_be_clickable((By.CSS_SELECTOR, "a.page-btn.page-next"))
+            EC.element_to_be_clickable(
+                (By.CSS_SELECTOR, "div.page-btn.page-next > a")
+            )
         )
 
         driver.execute_script(
@@ -287,10 +295,13 @@ def go_to_next_page(driver):
         except ElementClickInterceptedException:
             driver.execute_script("arguments[0].click();", next_btn)
 
-        # 等舊的第一個商品消失，表示已經換頁
-        wait.until(EC.staleness_of(first_item))
+        # 等到第一個商品網址改變，代表真的換頁
+        wait.until(
+            lambda d: d.find_element(
+                By.CSS_SELECTOR, "li.listAreaLi div.goods-img-url > a"
+            ).get_attribute("href") != old_first_href
+        )
 
-        # 等新頁商品出現
         wait.until(EC.presence_of_element_located((By.CLASS_NAME, "listAreaLi")))
 
         print("成功翻到下一頁")
@@ -364,12 +375,18 @@ def main():
         for page in range(max_pages):
             print(f"\n--- 正在抓第 {page + 1} 頁 ---")
 
+            print("準備執行 get_urls()")
             items = get_urls(driver)
+            print(f"get_urls() 抓到 {len(items)} 筆")
+
             all_items.extend(items)
 
             # 如果不是最後一頁，就翻頁
             if page < max_pages - 1:
+                print("準備翻到下一頁...")
                 success = go_to_next_page(driver)
+                print(f"go_to_next_page() 回傳: {success}")
+
                 if not success:
                     print("沒有下一頁了，提前結束")
                     break

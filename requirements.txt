@@ -1,4 +1,4 @@
 pandas==3.0.2
-Requests==2.33.1
+requests==2.33.1
 selenium==4.43.0
-webdriver_manager==4.0.2
+webdriver-manager==4.0.2   # 建議改成 webdriver-manager（中間加 -）
