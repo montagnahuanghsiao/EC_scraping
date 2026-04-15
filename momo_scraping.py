@@ -6,7 +6,10 @@ from selenium.webdriver.common.by import By
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import (TimeoutException,ElementClickInterceptedException)
+from selenium.common.exceptions import (
+    TimeoutException,
+    ElementClickInterceptedException,
+)
 
 import time
 import json
@@ -145,10 +148,10 @@ def search_product(driver, keyword):
 
 def get_urls(driver):
     wait = WebDriverWait(driver, 10)
-    product_urls = []
-    picture_urls = []
+    items = []
+    seen_product_urls = set()
+
     try:
-        # 1. 確保搜尋結果的容器已經出現 (以 li.listAreaLi 為指標)
         wait.until(EC.presence_of_element_located((By.CLASS_NAME, "listAreaLi")))
         xpath_str = "//li[contains(@class, 'listAreaLi') and not(.//div[contains(@class, 'sponsor-tag')])]"
         elements = driver.find_elements(By.XPATH, xpath_str)
@@ -157,34 +160,49 @@ def get_urls(driver):
 
         for el in elements:
             try:
-                # 假設 URL 在 div.goods-img-url 下的 a 標籤中
-                product_element = el.find_element(By.CSS_SELECTOR, "div.goods-img-url > a")
+                product_element = el.find_element(
+                    By.CSS_SELECTOR, "div.goods-img-url > a"
+                )
                 picture_element = el.find_element(By.CSS_SELECTOR, "img.goods-img")
+
                 product_url = product_element.get_attribute("href")
                 picture_url = picture_element.get_attribute("src")
-                if product_url and product_url.startswith("http") and picture_url and picture_url.startswith("http"):
-                    product_urls.append(product_url)
-                    picture_urls.append(picture_url)
+
+                if (
+                    product_url
+                    and product_url.startswith("http")
+                    and picture_url
+                    and picture_url.startswith("http")
+                ):
+                    # 只用 product_url 去重，避免商品和圖片錯位
+                    if product_url not in seen_product_urls:
+                        seen_product_urls.add(product_url)
+                        items.append(
+                            {
+                                "product_url": product_url,
+                                "picture_url": picture_url,
+                            }
+                        )
 
             except Exception as e:
-                # 某一個商品抓不到 URL 就跳過，不影響其他商品
                 print(f"某商品 URL 抓取失敗: {e}")
                 continue
 
     except Exception as e:
         print(f"抓取網址清單時發生錯誤: {e}")
 
-    return list(dict.fromkeys(product_urls)), list(dict.fromkeys(picture_urls))  # 確認網址無重複值
+    return items
 
 
-def get_product_details(driver, url, index):
+def get_product_details(driver, product_url, picture_url, index):
     wait = WebDriverWait(driver, 5)
     product_data = {
         "number": index + 1,
         "product_name": "",
         "sales_price": "",
         "store": "",
-        "product_url": url
+        "product_url": product_url,
+        "picture_url": picture_url,
     }
 
     # 記錄主分頁
@@ -195,12 +213,12 @@ def get_product_details(driver, url, index):
     driver.switch_to.window(driver.window_handles[-1])
 
     try:
-        driver.get(url)
+        driver.get(product_url)
         # 等待品名出現作為載入指標
         wait.until(EC.presence_of_element_located((By.TAG_NAME, "body")))
         time.sleep(2)  # 給網頁一點渲染時間
 
-        # 品名 (JS)
+        # 品名
         # 優先找 Meta，再找網頁 ID
         meta_titles = driver.find_elements(By.CSS_SELECTOR, "meta[property='og:title']")
         if meta_titles and meta_titles[0].get_attribute("content"):
@@ -235,8 +253,9 @@ def get_product_details(driver, url, index):
             )
             if store_els:
                 # 優先抓 title 屬性，抓不到再抓 text
-                product_data["store"] = store_els[0].get_attribute("title") or store_els[0].text
-
+                product_data["store"] = (
+                    store_els[0].get_attribute("title") or store_els[0].text
+                )
 
     except Exception as e:
         print(f"抓取失敗: {driver.current_url} | 錯誤: {e}")
@@ -246,6 +265,40 @@ def get_product_details(driver, url, index):
         driver.close()
         driver.switch_to.window(main_window)
     return product_data
+
+
+def go_to_next_page(driver):
+    wait = WebDriverWait(driver, 10)
+
+    try:
+        first_item = driver.find_elements(By.CLASS_NAME, "listAreaLi")[0]
+
+        next_btn = wait.until(
+            EC.element_to_be_clickable((By.CSS_SELECTOR, "a.page-btn.page-next"))
+        )
+
+        driver.execute_script(
+            "arguments[0].scrollIntoView({block: 'center'});", next_btn
+        )
+        time.sleep(1)
+
+        try:
+            next_btn.click()
+        except ElementClickInterceptedException:
+            driver.execute_script("arguments[0].click();", next_btn)
+
+        # 等舊的第一個商品消失，表示已經換頁
+        wait.until(EC.staleness_of(first_item))
+
+        # 等新頁商品出現
+        wait.until(EC.presence_of_element_located((By.CLASS_NAME, "listAreaLi")))
+
+        print("成功翻到下一頁")
+        return True
+
+    except Exception as e:
+        print(f"翻頁失敗或已無下一頁: {e}")
+        return False
 
 
 def save_to_json(data, filename):
@@ -281,6 +334,17 @@ def main():
         else:
             print("關鍵字不能為空, 請重新輸入: ")
 
+    while True:
+        page_input = input("請輸入要爬幾頁（1~5）: ").strip()
+        try:
+            max_pages = int(page_input)
+            if 1 <= max_pages <= 5:
+                break
+            else:
+                print("頁數必須介於 1 到 5 之間，請重新輸入。")
+        except ValueError:
+            print("請輸入有效的整數頁數。")
+
     try:
         driver = create_driver()
         # A. 啟動並前往官網
@@ -294,8 +358,36 @@ def main():
         # B. 搜尋關鍵字
         search_product(driver, keyword)
 
-        # C. 取得搜尋商品所有網址
-        product_urls_list, picture_urls_list = get_urls(driver)
+        # C. 取得搜尋商品所有網址（多頁）
+        all_items = []
+
+        for page in range(max_pages):
+            print(f"\n--- 正在抓第 {page + 1} 頁 ---")
+
+            items = get_urls(driver)
+            all_items.extend(items)
+
+            # 如果不是最後一頁，就翻頁
+            if page < max_pages - 1:
+                success = go_to_next_page(driver)
+                if not success:
+                    print("沒有下一頁了，提前結束")
+                    break
+
+                time.sleep(random.uniform(2, 4))
+
+        # 去重（用 product_url）
+        seen = set()
+        unique_items = []
+
+        for item in all_items:
+            if item["product_url"] not in seen:
+                seen.add(item["product_url"])
+                unique_items.append(item)
+
+        items = unique_items
+
+        print(f"\n總共抓到 {len(items)} 筆商品")
 
         # D.1. 取得商品圖片
         # 1. 建立資料夾
@@ -304,9 +396,10 @@ def main():
         os.makedirs(picture_folder, exist_ok=True)
         print(f"本次圖片將儲存在: {picture_folder}")
 
-        for index, url in enumerate(picture_urls_list):
+        for index, item in enumerate(items):
             try:
-                response = requests.get(url, timeout=10)
+                picture_url = item["picture_url"]
+                response = requests.get(picture_url, timeout=10)
                 if response.status_code == 200:
                     file_name = f"picture_{index + 1}.webp"
                     file_path = os.path.join(picture_folder, file_name)
@@ -323,13 +416,18 @@ def main():
 
         # D.2. 逐一爬取商品細節
         results = []
-        for index, url in enumerate(product_urls_list):
-            print(f"({index + 1}/{len(product_urls_list)}) 爬取中: {url}")
+        for index, item in enumerate(items):
+            print(f"({index + 1}/{len(items)}) 爬取中: {item['product_url']}")
 
             # 增加一個隨機小延遲，模擬真人思考後點擊
             time.sleep(random.uniform(2, 5))
 
-            detail = get_product_details(driver, url=url, index=index)
+            detail = get_product_details(
+                driver,
+                product_url=item["product_url"],
+                picture_url=item["picture_url"],
+                index=index,
+            )
             results.append(detail)
 
             # 建議：每爬幾筆稍微停一下，避免被網站發現你是機器人
