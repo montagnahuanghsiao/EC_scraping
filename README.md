@@ -1,27 +1,211 @@
-# 購物網爬蟲 (Product Scraper)
+# EC_scraping
 
-這是一個基於 Python Selenium 開發的自動化爬蟲工具，專門用於抓取購物網的商品資訊。
+使用 Python + Selenium 製作的購物網商品爬蟲。
+可依關鍵字搜尋商品、擷取商品資訊、下載圖片，並輸出為 JSON 與 CSV。
 
-## 🌟 功能特點
-- 支持多頁面自動翻頁抓取
-- 自動下載並分類商品圖片
-- 將抓取的商品資料存儲為 CSV 格式
-- 內建 ChromeDriver 自動管理機制
+---
 
-## 🛠️ 安裝步驟
+## 📌 功能
 
-1. **複製專案**
-    ```bash
-    git clone [https://github.com/montagnahuanghsiao/EC_scraping.git](https://github.com/montagnahuanghsiao/EC_scraping.git)
-    cd EC_scraping
-   
-2. **安裝必要套件**
-    ```bash
-    pip install -r requirements.txt
-   
-### 🚀 使用說明
-執行主程式即可開始爬取：
+* 自動開啟 Chrome 並進入頁面
+* 搜尋商品關鍵字
+* 排除廣告商品
+* 抓取：
 
-### ⚠️ 免責聲明
-本專案僅供學術研究與個人學習使用，請勿用於任何商業用途。請遵守購物網的 Robots 協議與相關法律規範。
-   
+  * 商品名稱
+  * 商品價格
+  * 商店名稱
+  * 商品連結
+* 下載商品圖片
+* 匯出 JSON / CSV
+
+---
+
+## 📁 專案結構
+
+```
+EC_scraping/
+│
+├─ momo_scraping.py
+├─ requirements.txt
+├─ README.md
+│
+├─ scraping_data/
+│   ├─ momo_xxx.json
+│   └─ momo_xxx.csv
+│
+└─ scraping_picture_xxx/
+    ├─ picture_1.webp
+    └─ ...
+```
+
+---
+
+## ⚙️ 環境需求
+
+* Python 3.9+
+* Google Chrome
+
+---
+
+## 🚀 安裝與執行
+
+### 1️⃣ 下載專案
+
+```
+git clone https://github.com/montagnahuanghsiao/EC_scraping.git
+cd EC_scraping
+```
+
+---
+
+### 2️⃣ 建立虛擬環境
+
+```
+python -m venv venv
+```
+
+---
+
+### 3️⃣ 啟動虛擬環境
+
+#### Windows (PowerShell)
+
+```
+.\venv\Scripts\Activate
+```
+
+#### macOS / Linux
+
+```
+source venv/bin/activate
+```
+
+---
+
+### 4️⃣ 安裝套件
+
+```
+pip install -r requirements.txt
+```
+
+或
+
+```
+python -m pip install -r requirements.txt
+```
+
+---
+
+### 5️⃣ 執行程式
+
+```
+python momo_scraping.py
+```
+
+---
+
+### 6️⃣ 輸入關鍵字
+
+```
+請輸入關鍵字: 手機
+```
+
+---
+
+## 📊 輸出結果
+
+### 📁 資料
+
+```
+scraping_data/
+  momo_關鍵字_時間.json
+  momo_關鍵字_時間.csv
+```
+
+### 🖼 圖片
+
+```
+scraping_picture_關鍵字_時間/
+  picture_1.webp
+  picture_2.webp
+```
+
+---
+
+## 📄 資料欄位
+
+| 欄位           | 說明   |
+| ------------ | ---- |
+| number       | 編號   |
+| product_name | 商品名稱 |
+| sales_price  | 價格   |
+| store        | 商店   |
+| product_url  | 商品連結 |
+
+---
+
+## ⚠️ 注意事項
+
+* 網站改版可能導致爬蟲失效
+* 請勿過度頻繁請求（避免被封）
+* 僅供學習用途
+
+---
+
+## ❗ 常見問題
+
+### PowerShell 無法啟動 venv
+
+```
+Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+```
+
+---
+
+### pip 安裝失敗
+
+```
+python -m pip install -r requirements.txt
+```
+
+---
+
+### cd 錯誤
+
+確認目前路徑：
+
+```
+pwd
+ls
+```
+
+---
+
+## 🔧 改善方向
+
+* 使用 logging 取代 print
+* 支援多頁爬取
+* 改寫成 class 架構
+* 加入 headless 模式
+* 圖片格式自動判斷
+* CLI 參數（例如 keyword）
+
+---
+
+## 📦 requirements.txt
+
+```
+requests
+selenium
+webdriver-manager
+pandas
+```
+
+---
+
+## 👤 作者
+
+```
+Mountain Huang
+```
