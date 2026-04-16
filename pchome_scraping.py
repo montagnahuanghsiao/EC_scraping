@@ -92,9 +92,7 @@ def search_product(driver, keyword):
     try:
         # 1. 等待搜尋框出現 (確保網頁載入完成)
         product_search = wait.until(
-            EC.presence_of_element_located(
-                (By.CSS_SELECTOR, "input[name='search-input']")
-            )
+            EC.presence_of_element_located((By.CSS_SELECTOR, "input.c-search__input"))
         )
 
         # 2. 清空並輸入關鍵字
@@ -104,7 +102,7 @@ def search_product(driver, keyword):
         # 3. 等待搜尋按鈕可以被點擊，然後點下去
         search_btn = wait.until(
             EC.element_to_be_clickable(
-                (By.CSS_SELECTOR, "button[data-testid='header-search-button']")
+                (By.CSS_SELECTOR, "button[data-regression='header_search_button']")
             )
         )
         # 先處理廣告遮罩
@@ -123,7 +121,7 @@ def search_product(driver, keyword):
             # 先用正常 click
             wait.until(
                 EC.element_to_be_clickable(
-                    (By.CSS_SELECTOR, "button[data-testid='header-search-button']")
+                    (By.CSS_SELECTOR, "button[data-regression='header_search_button']")
                 )
             )
             search_btn.click()
@@ -138,7 +136,9 @@ def search_product(driver, keyword):
         except TimeoutException:
             pass
 
-        wait.until(EC.presence_of_element_located((By.CLASS_NAME, "listAreaLi")))
+        wait.until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, ".c-listInfoGrid__body"))
+        )
 
         print(f"成功發起搜尋：{keyword}")
 
@@ -152,21 +152,55 @@ def get_urls(driver):
     seen_product_urls = set()
 
     try:
-        wait.until(EC.presence_of_element_located((By.CLASS_NAME, "listAreaLi")))
-        xpath_str = "//li[contains(@class, 'listAreaLi') and not(.//div[contains(@class, 'sponsor-tag')])]"
-        elements = driver.find_elements(By.XPATH, xpath_str)
+        wait.until(
+            EC.presence_of_element_located(
+                (
+                    By.CSS_SELECTOR,
+                    ".c-listInfoGrid__list.c-listInfoGrid__list--wrapProdCard",
+                )
+            )
+        )
 
-        print(f"共 {len(elements)} 個非廣告商品")
+        # 等待圖片從 data-src 轉移到 src，或讓 data-src 渲染出來
+        # 每次捲動 800 像素，停一下，直到捲到底部
+        current_pos = 0
+        while True:
+            current_pos += 800
+            driver.execute_script(f"window.scrollTo(0, {current_pos});")
+            time.sleep(0.5)  # 停半秒讓圖片觸發載入
+
+            # 取得目前視窗高度，判斷是否捲到底部
+            total_height = driver.execute_script("return document.body.scrollHeight")
+            if current_pos >= total_height:
+                break
+
+        # 捲動完後，回到最上方或直接開始抓取
+        # 為了保險，抓取前再次抓取所有元素
+
+        elements = driver.find_elements(
+            By.CSS_SELECTOR,
+            "li.c-listInfoGrid__item.c-listInfoGrid__item--gridCardGray5Rwd:not(:has(.c-label__rectangle--frosted))",
+        )
+
+        ad_elements = driver.find_elements(
+            By.CSS_SELECTOR, "div.c-label__rectangle--frosted"
+        )
+
+        print(f"共 {len(elements)} 個非廣告商品, {len(ad_elements)} 個廣告商品")
 
         for el in elements:
             try:
                 product_element = el.find_element(
-                    By.CSS_SELECTOR, "div.goods-img-url > a"
+                    By.CSS_SELECTOR, "div.c-prodInfoV2.c-prodInfoV2--gridCard > a"
                 )
-                picture_element = el.find_element(By.CSS_SELECTOR, "img.goods-img")
+                picture_element = el.find_element(
+                    By.CSS_SELECTOR, "img[data-regression='store_prodImg']"
+                )
 
                 product_url = product_element.get_attribute("href")
-                picture_url = picture_element.get_attribute("src")
+                picture_url = picture_element.get_attribute(
+                    "data-src"
+                ) or picture_element.get_attribute("src")
 
                 if (
                     product_url
@@ -174,6 +208,11 @@ def get_urls(driver):
                     and picture_url
                     and picture_url.startswith("http")
                 ):
+                    # 再次檢查是否抓到 loading 圖，如果是，代表還沒載入完成
+                    if "mobile_loading.svg" in picture_url:
+                        # 這裡可以選擇略過，或者設定一個預設值
+                        continue
+
                     # 只用 product_url 去重，避免商品和圖片錯位
                     if product_url not in seen_product_urls:
                         seen_product_urls.add(product_url)
@@ -222,15 +261,14 @@ def get_product_details(driver, product_url, picture_url, index):
         # 優先找 Meta，再找網頁 ID
         meta_titles = driver.find_elements(By.CSS_SELECTOR, "meta[property='og:title']")
         if meta_titles and meta_titles[0].get_attribute("content"):
-            raw_meta_title = meta_titles[0].get_attribute("content")
-            product_data["product_name"] = raw_meta_title.split(" - ")[0].strip()
+            product_data["product_name"] = meta_titles[0].get_attribute("content")
         else:
             name_els = driver.find_elements(
-                By.CSS_SELECTOR, "#osmGoodsName, #goods-detail-goods-title, .goodsName"
+                By.CSS_SELECTOR,
+                "h1.o-prodMainName__grayDarkest.o-prodMainName__grayDarkest--l700",
             )
             if name_els:
-                raw_name = name_els[0].text
-                product_data["product_name"] = raw_name.split(" - ")[0].strip()
+                product_data["product_name"] = name_els[0].text
 
         # 價格
         meta_prices = driver.find_elements(
@@ -240,18 +278,21 @@ def get_product_details(driver, product_url, picture_url, index):
             product_data["sales_price"] = meta_prices[0].get_attribute("content")
         else:
             price_els = driver.find_elements(
-                By.CSS_SELECTOR, "span.seoPrice, .productPrice, span.text-ec_4xl"
+                By.CSS_SELECTOR,
+                "div.o-prodPrice__price.o-prodPrice__price--xxl700Primary",
             )
             if price_els:
                 product_data["sales_price"] = price_els[0].text
 
         # 商店
-        meta_stores = driver.find_elements(By.CSS_SELECTOR, 'meta[name="Author"]')
+        meta_stores = driver.find_elements(
+            By.CSS_SELECTOR, 'meta[property="og:site_name"]'
+        )
         if meta_stores and meta_stores[0].get_attribute("content"):
             product_data["store"] = meta_stores[0].get_attribute("content")
         else:
             store_els = driver.find_elements(
-                By.CSS_SELECTOR, "a.store-header-logo-box, .brandName"
+                By.CSS_SELECTOR, "a.gtmClickV2, .c-breadcrumb__text"
             )
             if store_els:
                 # 優先抓 title 屬性，抓不到再抓 text
@@ -276,13 +317,13 @@ def go_to_next_page(driver):
         # 先記錄目前第一個商品的網址
         first_link_el = wait.until(
             EC.presence_of_element_located(
-                (By.CSS_SELECTOR, "li.listAreaLi div.goods-img-url > a")
+                (By.CSS_SELECTOR, "div.c-prodInfoV2.c-prodInfoV2--gridCard > a")
             )
         )
         old_first_href = first_link_el.get_attribute("href")
 
         next_btn = wait.until(
-            EC.element_to_be_clickable((By.CSS_SELECTOR, "div.page-btn.page-next > a"))
+            EC.element_to_be_clickable((By.CSS_SELECTOR, "i[class*='arrowSolidRight']"))
         )
 
         driver.execute_script(
@@ -298,12 +339,19 @@ def go_to_next_page(driver):
         # 等到第一個商品網址改變，代表真的換頁
         wait.until(
             lambda d: d.find_element(
-                By.CSS_SELECTOR, "li.listAreaLi div.goods-img-url > a"
-            ).get_attribute("href")
+                By.CSS_SELECTOR, "[data-regression='store_prodImg']"  # 加上中括號
+            ).get_attribute("src")
             != old_first_href
         )
 
-        wait.until(EC.presence_of_element_located((By.CLASS_NAME, "listAreaLi")))
+        wait.until(
+            EC.presence_of_element_located(
+                (
+                    By.CSS_SELECTOR,
+                    ".c-listInfoGrid__list.c-listInfoGrid__list--wrapProdCard",
+                )
+            )
+        )
 
         print("成功翻到下一頁")
         return True
@@ -360,7 +408,7 @@ def main():
     try:
         driver = create_driver()
         # A. 啟動並前往官網
-        url = "https://www.momoshop.com.tw/main/Main.jsp"
+        url = "https://24h.pchome.com.tw/"
         driver.get(url)
 
         # A.1. 設定等待時間
@@ -459,7 +507,7 @@ def main():
             os.makedirs(folder_name, exist_ok=True)
 
             # 儲存路徑
-            base_path = os.path.join(folder_name, f"momo_{keyword}_{timestamp}")
+            base_path = os.path.join(folder_name, f"PCHOME24_{keyword}_{timestamp}")
 
             print(f"\n--- 開始儲存資料 (共 {len(results)} 筆) ---")
             save_to_json(results, f"{base_path}.json")
