@@ -146,7 +146,7 @@ def search_product(driver, keyword):
         print(f"搜尋過程中發生錯誤: {e}")
 
 
-def get_urls(driver):
+def get_data(driver):
     wait = WebDriverWait(driver, 10)
     items = []
     seen_product_urls = set()
@@ -158,15 +158,29 @@ def get_urls(driver):
 
         print(f"共 {len(elements)} 個非廣告商品")
 
-        for el in elements:
+        for index, el in enumerate(elements):
             try:
+                # 商品連結
                 product_element = el.find_element(
                     By.CSS_SELECTOR, "div.goods-img-url > a"
                 )
-                picture_element = el.find_element(By.CSS_SELECTOR, "img.goods-img")
-
                 product_url = product_element.get_attribute("href")
+
+                # 圖片連結
+                picture_element = el.find_element(By.CSS_SELECTOR, "img.goods-img")
                 picture_url = picture_element.get_attribute("src")
+
+                # 品名
+                product_name_element = el.find_element(
+                    By.CSS_SELECTOR, "h3.prdName > a"
+                )
+                product_name = product_name_element.text
+
+                # 價格
+                sales_price_element = el.find_element(By.CSS_SELECTOR, ".price > b")
+                sales_price = sales_price_element.text
+
+                # 店家
 
                 if (
                     product_url
@@ -179,22 +193,25 @@ def get_urls(driver):
                         seen_product_urls.add(product_url)
                         items.append(
                             {
+                                "number": index + 1,
+                                "product_name": product_name,
+                                "sales_price": sales_price,
+                                "store": "momo購物網",
                                 "product_url": product_url,
                                 "picture_url": picture_url,
                             }
                         )
 
             except Exception as e:
-                print(f"某商品 URL 抓取失敗: {e}")
+                print(f"某商品資料抓取失敗: {e}")
                 continue
 
     except Exception as e:
-        print(f"抓取網址清單時發生錯誤: {e}")
+        print(f"抓取商品資料時發生錯誤: {e}")
 
     return items
 
-
-def get_product_details(driver, product_url, picture_url, index):
+    # def get_product_details(driver, product_url, picture_url, index):
     wait = WebDriverWait(driver, 5)
     product_data = {
         "number": index + 1,
@@ -222,13 +239,15 @@ def get_product_details(driver, product_url, picture_url, index):
         # 優先找 Meta，再找網頁 ID
         meta_titles = driver.find_elements(By.CSS_SELECTOR, "meta[property='og:title']")
         if meta_titles and meta_titles[0].get_attribute("content"):
-            product_data["product_name"] = meta_titles[0].get_attribute("content")
+            raw_meta_title = meta_titles[0].get_attribute("content")
+            product_data["product_name"] = raw_meta_title.split(" - ")[0].strip()
         else:
             name_els = driver.find_elements(
                 By.CSS_SELECTOR, "#osmGoodsName, #goods-detail-goods-title, .goodsName"
             )
             if name_els:
-                product_data["product_name"] = name_els[0].text
+                raw_name = name_els[0].text
+                product_data["product_name"] = raw_name.split(" - ")[0].strip()
 
         # 價格
         meta_prices = driver.find_elements(
@@ -323,17 +342,6 @@ def save_to_json(data, filename):
         print(f"JSON 儲存失敗：{e}")
 
 
-def save_to_csv(data, filename):
-    """將結果存成 CSV 檔"""
-    try:
-        df = pd.DataFrame(data)
-        # utf-8-sig 中文不亂碼
-        df.to_csv(filename, index=False, encoding="utf-8-sig")
-        print(f"CSV 儲存成功：{filename}")
-    except Exception as e:
-        print(f"CSV 儲存失敗：{e}")
-
-
 def main():
     driver = None
 
@@ -375,8 +383,8 @@ def main():
             print(f"\n--- 正在抓第 {page + 1} 頁 ---")
 
             print("準備執行 get_urls()")
-            items = get_urls(driver)
-            print(f"get_urls() 抓到 {len(items)} 筆")
+            items = get_data(driver)
+            print(f"get_data() 抓到 {len(items)} 筆")
 
             all_items.extend(items)
 
@@ -405,63 +413,25 @@ def main():
 
         print(f"\n總共抓到 {len(items)} 筆商品")
 
-        # D.1. 取得商品圖片
-        # 1. 建立資料夾
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        picture_folder = f"scraping_picture_{keyword}_{timestamp}"
-        os.makedirs(picture_folder, exist_ok=True)
-        print(f"本次圖片將儲存在: {picture_folder}")
-
-        for index, item in enumerate(items):
-            try:
-                picture_url = item["picture_url"]
-                response = requests.get(picture_url, timeout=10)
-                if response.status_code == 200:
-                    file_name = f"picture_{index + 1}.webp"
-                    file_path = os.path.join(picture_folder, file_name)
-
-                    with open(file_path, "wb") as f:
-                        f.write(response.content)
-                    print(f"成功儲存: {file_path}")
-                else:
-                    print(
-                        f"下載圖片失敗 編號: {index + 1} (Status: {response.status_code})"
-                    )
-            except Exception as e:
-                print(f"處理第 {index + 1} 張圖片時發生錯誤: {e}")
-
-        # D.2. 逐一爬取商品細節
-        results = []
-        for index, item in enumerate(items):
-            print(f"({index + 1}/{len(items)}) 爬取中: {item['product_url']}")
-
-            # 增加一個隨機小延遲，模擬真人思考後點擊
-            time.sleep(random.uniform(2, 5))
-
-            detail = get_product_details(
-                driver,
-                product_url=item["product_url"],
-                picture_url=item["picture_url"],
-                index=index,
-            )
-            results.append(detail)
-
-            # 建議：每爬幾筆稍微停一下，避免被網站發現你是機器人
-            time.sleep(random.uniform(1, 3))
-
         # E. 儲存結果
-        if results:
+        if items:
+            # 重新整理編號 (Number)，確保從 1 到 N 排序，不會每頁都從 1 開始
+            for idx, item in enumerate(items, 1):
+                item["number"] = idx
+
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             # 建立資料夾
             folder_name = "scraping_data"
             os.makedirs(folder_name, exist_ok=True)
 
-            # 儲存路徑
+            # 儲存路徑 (檔名加上關鍵字與時間戳)
             base_path = os.path.join(folder_name, f"momo_{keyword}_{timestamp}")
+            print(f"\n--- 開始儲存資料 (共 {len(items)} 筆) ---")
 
-            print(f"\n--- 開始儲存資料 (共 {len(results)} 筆) ---")
-            save_to_json(results, f"{base_path}.json")
-            save_to_csv(results, f"{base_path}.csv")
+            # 執行儲存
+            save_to_json(items, f"{base_path}.json")
+
+            print(f"檔案已儲存至: {base_path}.json")
             print("--- 所有檔案儲存完畢 ---\n")
         else:
             print("未抓取到任何資料，不執行儲存。")

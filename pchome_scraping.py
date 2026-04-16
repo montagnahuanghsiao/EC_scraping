@@ -261,14 +261,17 @@ def get_product_details(driver, product_url, picture_url, index):
         # 優先找 Meta，再找網頁 ID
         meta_titles = driver.find_elements(By.CSS_SELECTOR, "meta[property='og:title']")
         if meta_titles and meta_titles[0].get_attribute("content"):
-            product_data["product_name"] = meta_titles[0].get_attribute("content")
+            raw_meta_title = meta_titles[0].get_attribute("content")
+            product_data["product_name"] = raw_meta_title.split(" - ")[0].strip()
         else:
             name_els = driver.find_elements(
                 By.CSS_SELECTOR,
                 "h1.o-prodMainName__grayDarkest.o-prodMainName__grayDarkest--l700",
             )
+
             if name_els:
-                product_data["product_name"] = name_els[0].text
+                raw_name = name_els[0].text
+                product_data["product_name"] = raw_name.split(" - ")[0].strip()
 
         # 價格
         meta_prices = driver.find_elements(
